@@ -47,23 +47,24 @@ Delay.resolve = function(delay, value) {
         }, delay._wait);
     });
 };
-// Delay.cons :: Int -> (a -> b) -> Delay b -> Delay a
+// Delay.cons :: Int -> (a -> IO b) -> Delay b -> Delay a
 Delay.cons = function(wait, func, delay) {
     return Delay.of(wait, function(a) {
-        return Delay.resolve(delay, func(a));
+        var iob = IO.bind(IO.of(a), func);
+        return IO.bind(iob, function(b) {
+            return Delay.resolve(delay, b);
+        });
     });
 };
 
-// add42ToString :: Int -> String
-var add42ToString = function(a) { return '' + (a + 42); };
-// delayLog :: Delay String
-var delayLog = Delay.of(1000, IO.log);
-// someDelay :: Delay Int
-var someDelay = Delay.cons(500, add42ToString, delayLog);
-// strLength :: String -> Int
-var strLength = function(s) { return s.length; };
-// someOtherDelay :: Delay String
-var someOtherDelay = Delay.cons(500, add42ToString, Delay.cons(500, strLength, delayLog));
-var delayIO = Delay.resolve(someOtherDelay, 42);
-IO.main(delayIO);
-
+// secondLog :: Delay String
+var secondLog = Delay.of(500, IO.log);
+// middleMan :: String -> IO String
+var middleMan = function(first) {
+    return IO.next(IO.log(first), IO.of('second'));
+};
+// firstLog :: Delay String
+var firstLog = Delay.cons(500, middleMan, secondLog);
+// firstIO :: IO ()
+var firstIO = Delay.resolve(firstLog, 'first');
+IO.main(firstIO);
