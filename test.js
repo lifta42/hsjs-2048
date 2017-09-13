@@ -4,7 +4,7 @@
 //
 
 var IO = function(f) {
-    this._action = f;
+    return {_action: f};
 };
 // IO.of :: a -> IO a
 IO.of = function(a) {
@@ -32,8 +32,7 @@ IO.main = function(io) {
 };
 
 var Delay = function(wait, callback) {
-    this._wait = wait;
-    this._callback = callback;
+    return {_wait: wait, _callback: callback};
 };
 // Delay.of :: Int -> (a -> IO ()) -> Delay a
 Delay.of = function(wait, callback) {
