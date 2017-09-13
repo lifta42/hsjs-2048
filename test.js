@@ -40,20 +40,20 @@ Delay.of = function(wait, callback) {
     return new Delay(wait, callback);
 };
 // Delay.resolve :: Delay a -> a -> IO ()
-Delay.resolve = function(delay, value) {
-    return new IO(function() {
-        setTimeout(function() {
-            IO.main(delay._callback(value));
-        }, delay._wait);
-    });
+Delay.resolve = function(delay) {
+    return function(value) {
+        return new IO(function() {
+            setTimeout(function() {
+                IO.main(delay._callback(value));
+            }, delay._wait);
+        });
+    };
 };
 // Delay.cons :: Int -> (a -> IO b) -> Delay b -> Delay a
 Delay.cons = function(wait, func, delay) {
     return Delay.of(wait, function(a) {
         var iob = IO.bind(IO.of(a), func);
-        return IO.bind(iob, function(b) {
-            return Delay.resolve(delay, b);
-        });
+        return IO.bind(iob, Delay.resolve(delay));
     });
 };
 
@@ -66,5 +66,5 @@ var middleMan = function(first) {
 // firstLog :: Delay String
 var firstLog = Delay.cons(500, middleMan, secondLog);
 // firstIO :: IO ()
-var firstIO = Delay.resolve(firstLog, 'first');
+var firstIO = Delay.resolve(firstLog)('first');
 IO.main(firstIO);
