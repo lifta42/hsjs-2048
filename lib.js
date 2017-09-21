@@ -33,3 +33,44 @@ IO.next = function(a, b) {
 IO.main = function(io) {
     return io.action();
 };
+
+var Delay = function(f) {
+    // Delay a b
+    // f :: a -> (b -> c) -> ()
+    return {delayed: f};
+};
+// Delay.Timeout :: Int -> (a -> IO b) -> Delay a b
+Delay.Timeout = function(wait, delayed) {
+    return Delay(function(value, follower) {
+        setTimeout(function() {
+            var ioB = delayed(value);
+            IO.bind(ioB, follower);
+        }, wait);
+        return null;
+    })
+};
+
+var DelayList = function(f) {
+    // DelayList a
+    // f :: a -> ()
+    return {delayed: f};
+};
+// DelayList.Empty :: DelayList a
+DelayList.Empty = function() {
+    return DelayList(function() {
+        return null;
+    });
+};
+// DelayList.Cons :: Delay a b -> DelayList b -> DelayList a
+DelayList.Cons = function(delay, list) {
+    return DelayList(function(a) {
+        delay.delayed(a, list.delayed);  // list.delay will be called with b
+        return null;
+    });
+};
+// DelayList.resolve :: a -> DelayList a -> IO ()
+DelayList.resolve = function(init, list) {
+    return IO(function() {
+        list.delayed(init);
+    });
+};
