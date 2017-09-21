@@ -41,12 +41,14 @@ var Delay = function(f) {
 };
 // Delay.Timeout :: Int -> (a -> IO b) -> Delay a b
 Delay.Timeout = function(wait, delayed) {
-    return Delay(function(value, follower) {
-        setTimeout(function() {
-            var ioB = delayed(value);
-            IO.bind(ioB, follower);
-        }, wait);
-        return null;
+    return Delay(function(value) {
+        return function(follower) {
+            setTimeout(function() {
+                var ioB = delayed(value);
+                IO.bind(ioB, follower);
+            }, wait);
+            return null;
+        };
     })
 };
 
@@ -63,10 +65,11 @@ DelayList.Empty = function() {
 };
 // DelayList.Cons :: Delay a b -> DelayList b -> DelayList a
 DelayList.Cons = function(delay, list) {
-    return DelayList(function(a) {
-        delay.delayed(a, list.delayed);  // list.delay will be called with b
-        return null;
-    });
+    // return DelayList(function(a) {
+    //     delay.delayed(a, list.delayed);  // list.delay will be called with b
+    //     return null;
+    // });
+    return DelayList(compose(function() { return null; }, flip(delay.delayed)(list.delayed)));
 };
 // DelayList.resolve :: a -> DelayList a -> IO ()
 DelayList.resolve = function(init, list) {
@@ -97,11 +100,33 @@ Listen.listen = function(event, callback) {
 
 // Delay.Listened :: Listen -> (_Event -> IO b) -> Delay a b
 Delay.Listened = function(listen, delayed) {
-    return Delay(function(_, follower) {
-        return IO.main(Listen.listen(listen, function(ev) {
-            var ioB = delayed(ev);
-            IO.bind(ioB, follower);
-            return null;
-        }));
+    return Delay(function() {
+        return function(follower) {
+            return IO.main(Listen.listen(listen, function(ev) {
+                var ioB = delayed(ev);
+                IO.bind(ioB, follower);
+                return null;
+            }));
+        };
     });
+};
+
+// Something for point-free.
+var prop = function(key) {
+    return function(obj) {
+        return obj[key];
+    };
+};
+var compose = function(g, f) {
+    return function(x) {
+        return g(f(x));
+    };
+};
+
+var flip = function(f) {
+    return function(b) {
+        return function(a) {
+            return f(a)(b);
+        };
+    };
 };
