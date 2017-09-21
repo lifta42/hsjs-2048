@@ -10,30 +10,56 @@ var HSJS_2048_TEST_JS = true;
 
 
 var TEST_TIMEOUT = 1000;
-var GLOBAL_OK = true;  // DIRTY
-var it = function(desc, block) {
-    var finished = false;
-    block(function(expr) {
-        if (finished) {
-            GLOBAL_OK = false;
-            throw Error('Duplicated test: ' + desc);
-        }
-        if (expr !== true) {
-            GLOBAL_OK = false;
-            throw Error('Test not passed: ' + desc);
-        }
-        finished = true;
-    });
-    setTimeout(function() {
-        if (!finished) {
-            GLOBAL_OK = false;
-            throw Error('Test timeout: ' + desc);
-        }
-    }, TEST_TIMEOUT);
+var Test = function() {
+    this._end = false;
+    this._count = 0;
+    this._resume = true;
+    var self = this;
+    this.end = function() {
+        self._end = true;
+    };
+    this.it = function(desc, block) {
+        if (!self._resume)
+            return;
+
+        var finished = false;
+        self._count++;
+
+        block(function(expr) {
+            if (finished) {
+                self._resume = false;
+                throw Error('Duplicated asserted: ' + desc);
+            }
+            if (expr !== true) {
+                self._resume = false;
+                throw Error('Test not passed: ' + desc);
+            }
+            finished = true;
+            if (--self._count === 0 && self._end) {
+                if (self.after) {
+                    self.after();
+                }
+                else {
+                    throw Error('Main process not set.');
+                }
+            }
+        });
+
+        setTimeout(function() {
+            if (!finished) {
+                self._resume = false;
+                throw Error('Test timeout: ' + desc);
+            }
+        }, TEST_TIMEOUT);
+    };
 };
 
 // safeCheckAndDo :: IO () -> ()
 var safeCheckAndDo = function(action) {
+    var test = new Test();
+    test.after = function() { return IO.main(action); };
+    var it = test.it;
+
     it('should pass', function(assert) {
         assert(42 === 40 + 2);
     });
@@ -121,10 +147,6 @@ var safeCheckAndDo = function(action) {
         IO.main(DelayList.resolve(null, list));
     });
 
-    setTimeout(function() {
-        if (GLOBAL_OK) {
-            IO.main(action);
-        }
-    }, TEST_TIMEOUT + 10);
+    test.end();
     return null;
 };
