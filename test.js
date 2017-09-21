@@ -10,19 +10,23 @@ var HSJS_2048_TEST_JS = true;
 
 
 var TEST_TIMEOUT = 1000;
+var GLOBAL_OK = true;  // DIRTY
 var it = function(desc, block) {
     var finished = false;
     block(function(expr) {
         if (finished) {
+            GLOBAL_OK = false;
             throw Error('Duplicated test: ' + desc);
         }
         if (expr !== true) {
+            GLOBAL_OK = false;
             throw Error('Test not passed: ' + desc);
         }
         finished = true;
     });
     setTimeout(function() {
         if (!finished) {
+            GLOBAL_OK = false;
             throw Error('Test timeout: ' + desc);
         }
     }, TEST_TIMEOUT);
@@ -117,6 +121,10 @@ var safeCheckAndDo = function(action) {
         IO.main(DelayList.resolve(null, list));
     });
 
-    // IO.main(action);
+    setTimeout(function() {
+        if (GLOBAL_OK) {
+            IO.main(action);
+        }
+    }, TEST_TIMEOUT + 10);
     return null;
 };
