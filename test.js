@@ -9,12 +9,23 @@ if (typeof HSJS_2048_LIB_JS === 'undefined') {
 var HSJS_2048_TEST_JS = true;
 
 
+var TEST_TIMEOUT = 1000;
 var it = function(desc, block) {
+    var finished = false;
     block(function(expr) {
+        if (finished) {
+            throw Error('Duplicated test: ' + desc);
+        }
         if (expr !== true) {
             throw Error('Test not passed: ' + desc);
         }
+        finished = true;
     });
+    setTimeout(function() {
+        if (!finished) {
+            throw Error('Test timeout: ' + desc);
+        }
+    }, TEST_TIMEOUT);
 };
 
 // safeCheckAndDo :: IO () -> ()
