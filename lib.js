@@ -3,6 +3,8 @@
 // Add some more comment here.
 // 2017.9.12 by liftA42.
 //
+var HSJS_2048_LIB_JS = true;
+
 
 var IO = function(f) {
     return {action: f};
@@ -15,11 +17,11 @@ IO.return = function(a) {
 IO.bind = function(io, func) {
     return func(io.action())
 };
-// IO.log :: String -> IO String
+// IO.log :: String -> IO ()
 IO.log = function(string) {
     return IO(function() {
         console.log(string);
-        return IO.return(string);
+        return IO.return(null);
     });
 };
 // IO.next :: IO a -> IO b -> IO b
