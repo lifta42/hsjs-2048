@@ -74,3 +74,34 @@ DelayList.resolve = function(init, list) {
         list.delayed(init);
     });
 };
+
+var Listen = function(f) {
+    return {action: f};
+};
+// Listen.DocEvent :: String -> Listen
+Listen.DocEvent = function(eventName) {
+    return Listen(function(callback) {
+        // Listen once by default, because no remove event listener API is provided by now.
+        // noinspection JSCheckFunctionSignatures
+        document.addEventListener(eventName, callback, {once: true});
+        return null;
+    });
+};
+// Listen.listen :: Listen -> (_Event -> IO ()) -> IO ()
+Listen.listen = function(event, callback) {
+    return IO(function() {
+        event.action(callback);
+        return null;
+    });
+};
+
+// Delay.Listened :: Listen -> (_Event -> IO b) -> Delay a b
+Delay.Listened = function(listen, delayed) {
+    return Delay(function(_, follower) {
+        return IO.main(Listen.listen(listen, function(ev) {
+            var ioB = delayed(ev);
+            IO.bind(ioB, follower);
+            return null;
+        }));
+    });
+};

@@ -51,7 +51,7 @@ var safeCheckAndDo = function(action) {
     // Delay & DelayList
     // toutAdd42 :: Delay Int Int
     var toutAdd42 = Delay.Timeout(0, function(n) { return IO.return(n + 42); });
-    // toutCheck :: Assert -> Int -> Delay Int ()
+    // toutCheck :: Assert -> a -> Delay a ()
     var toutCheck = function(assert, expected) {
         return Delay.Timeout(0, function(x) {
             assert(x === expected);
@@ -66,6 +66,48 @@ var safeCheckAndDo = function(action) {
         var list = DelayList.Cons(toutAdd42, DelayList.Cons(toutAdd42,
             DelayList.Cons(toutCheck(assert, 84), DelayList.Empty())));
         IO.main(DelayList.resolve(0, list));
+    });
+
+    // Delay & Listen
+    it('should result event\'s type after event triggered', function(assert) {
+        // lisType :: Delay a String
+        var lisType = Delay.Listened(Listen.DocEvent('someEvent'), function(ev) {
+            return IO.return(ev.type);
+        });
+        var list = DelayList.Cons(lisType, DelayList.Cons(toutCheck(assert, 'someEvent'), DelayList.Empty()));
+        IO.main(DelayList.resolve(null, list));
+        // unsafe
+        document.dispatchEvent(new Event('someEvent'));
+    });
+    it('should listen for an event after delayed', function(assert) {
+        // unsafe
+        // Dispatch two events, the first one should be missed.
+        var timestamp;
+        document.dispatchEvent(new Event('someEvent'));
+        setTimeout(function() {
+            var event = new Event('someEvent');
+            timestamp = event.timeStamp;
+            document.dispatchEvent(event);
+        }, 10);
+
+        // lisTime :: Delay a Float
+        var lisTime = Delay.Listened(Listen.DocEvent('someEvent'), function(ev) {
+            return IO.return(ev.timeStamp);
+        });
+        // toutWait :: Delay a ()
+        var toutWait = Delay.Timeout(0, function() {
+            return IO.return(null);
+        });
+        // toutCheck :: Assert -> a -> Delay a ()
+        // Can not use outside `toutCheck` because timestamp will be set after a while.
+        var toutCheckTimestamp = Delay.Timeout(0, function(x) {
+                assert(x === timestamp);
+                return IO.return(null);
+        });
+
+        var list = DelayList.Cons(toutWait, DelayList.Cons(lisTime,
+            DelayList.Cons(toutCheckTimestamp, DelayList.Empty())));
+        IO.main(DelayList.resolve(null, list));
     });
 
     // IO.main(action);
