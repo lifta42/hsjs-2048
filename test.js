@@ -7,52 +7,58 @@ if (typeof HSJS_2048_LIB_JS === 'undefined') {
 }
 
 var HSJS_2048_TEST_JS = true;
-
-
-var TEST_TIMEOUT = 1000;
 var Test = function() {
-    this._end = false;
-    this._count = 0;
-    this._resume = true;
+    this.after = null;
+    this._tests = [];
+    this._testingIndex = 0;
+
     var self = this;
-    this.end = function() {
-        self._end = true;
-    };
-    this.it = function(desc, block) {
-        if (!self._resume)
-            return;
+    this.it = function(desc, testBlock) {
+        self._tests.push(function() {
+            var finished = false;
+            testBlock(function(expr) {
+                if (finished) {
+                    throw Error('Dup assertion in test: ' + desc);
+                }
 
-        var finished = false;
-        self._count++;
-
-        block(function(expr) {
-            if (finished) {
-                self._resume = false;
-                throw Error('Duplicated asserted: ' + desc);
-            }
-            if (expr !== true) {
-                self._resume = false;
-                throw Error('Test not passed: ' + desc);
-            }
-            finished = true;
-            if (--self._count === 0 && self._end) {
-                if (self.after) {
-                    self.after();
+                finished = true;
+                if (expr !== true) {
+                    throw Error('Test not passed: ' + desc);
                 }
                 else {
-                    throw Error('Main process not set.');
+                    if (self._testingIndex === self._tests.length - 1) {
+                        console.log('All test passed');
+                        if (self.after) {
+                            self.after();
+                        }
+                        else {
+                            throw Error('The main process is not set.');
+                        }
+                    }
+                    else {
+                        self._testingIndex++;
+                        self._tests[self._testingIndex]();
+                    }
                 }
-            }
-        });
+            });
 
-        setTimeout(function() {
-            if (!finished) {
-                self._resume = false;
-                throw Error('Test timeout: ' + desc);
-            }
-        }, TEST_TIMEOUT);
+            setTimeout(function() {
+                if (!finished) {
+                    throw Error('Test timeout: ' + desc);
+                }
+            }, 1000);
+        })
     };
+    this.end = function() {
+        if (self._tests.length === 0) {
+            throw Error('There is no test case.');
+        }
+        else {
+            self._tests[0]();
+        }
+    }
 };
+
 
 // safeCheckAndDo :: IO () -> ()
 var safeCheckAndDo = function(action) {
@@ -63,6 +69,17 @@ var safeCheckAndDo = function(action) {
     it('should pass', function(assert) {
         assert(42 === 40 + 2);
     });
+    var firstFinished = false;
+    it('should be in seq (part 1)', function(assert) {
+        setTimeout(function() {
+            firstFinished = true;
+            assert(true);
+        }, 42);
+    });
+    it('should be in seq (part 2)', function(assert) {
+        assert(firstFinished);
+    });
+
     // IO
     // io42 :: IO Int
     var io42 = IO.return(42);
@@ -110,9 +127,15 @@ var safeCheckAndDo = function(action) {
     });
 
     // Delay & Listen
+    // eventPropIO :: String -> _Event -> a -> IO b
+    var eventPropIO = function(key) {
+        return function(ev, a) {
+            return compose(IO.return, prop(key))(constant(ev, a));
+        };
+    };
     it('should result event\'s type after event triggered', function(assert) {
         // lisType :: Delay a String
-        var lisType = Delay.Listened(Listen.DocEvent('someEvent'), compose(IO.return, prop('type')));
+        var lisType = Delay.Listened(Listen.DocEvent('someEvent'), eventPropIO('type'));
         var list = DelayList.Cons(lisType, DelayList.Cons(toutCheck(assert, 'someEvent'), DelayList.Empty()));
         IO.main(DelayList.resolve(null, list));
         // unsafe
@@ -121,8 +144,10 @@ var safeCheckAndDo = function(action) {
     it('should listen for an event after delayed', function(assert) {
         // unsafe
         // Dispatch two events, the first one should be missed.
+        setTimeout(function() {
+            document.dispatchEvent(new Event('someEvent'));
+        }, 5);
         var timestamp;
-        document.dispatchEvent(new Event('someEvent'));
         setTimeout(function() {
             var event = new Event('someEvent');
             timestamp = event.timeStamp;
@@ -130,9 +155,9 @@ var safeCheckAndDo = function(action) {
         }, 10);
 
         // lisTime :: Delay a Float
-        var lisTime = Delay.Listened(Listen.DocEvent('someEvent'), compose(IO.return, prop('timeStamp')));
+        var lisTime = Delay.Listened(Listen.DocEvent('someEvent'), eventPropIO('timeStamp'));
         // toutWait :: Delay a ()
-        var toutWait = Delay.Timeout(0, function() {
+        var toutWait = Delay.Timeout(7, function() {
             return IO.return(null);
         });
         // toutCheckTimestamp :: Delay Float ()
@@ -145,6 +170,24 @@ var safeCheckAndDo = function(action) {
         var list = DelayList.Cons(toutWait, DelayList.Cons(lisTime,
             DelayList.Cons(toutCheckTimestamp, DelayList.Empty())));
         IO.main(DelayList.resolve(null, list));
+    });
+    // lisAdd42 :: Delay Int Int
+    var lisAdd42 = Delay.Listened(Listen.DocEvent('someEvent'), function(_, n) {
+        return IO.return(n + 42);
+    });
+    it('should pass the value after event triggered', function(assert) {
+        var list = DelayList.Cons(lisAdd42, DelayList.Cons(toutCheck(assert, 42), DelayList.Empty()));
+        IO.main(DelayList.resolve(0, list));
+        // unsafe
+        document.dispatchEvent(new Event('someEvent'));
+    });
+    it('should be able to listen one event for more than once', function(assert) {
+        var list = DelayList.Cons(lisAdd42, DelayList.Cons(lisAdd42,
+            DelayList.Cons(toutCheck(assert, 84), DelayList.Empty())));
+        IO.main(DelayList.resolve(0, list));
+        // unsafe
+        document.dispatchEvent(new Event('someEvent'));
+        document.dispatchEvent(new Event('someEvent'));
     });
 
     test.end();

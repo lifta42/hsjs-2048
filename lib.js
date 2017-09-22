@@ -98,12 +98,12 @@ Listen.listen = function(event, callback) {
     });
 };
 
-// Delay.Listened :: Listen -> (_Event -> IO b) -> Delay a b
+// Delay.Listened :: Listen -> (_Event -> a -> IO b) -> Delay a b
 Delay.Listened = function(listen, delayed) {
-    return Delay(function() {
+    return Delay(function(value) {
         return function(follower) {
             return IO.main(Listen.listen(listen, function(ev) {
-                var ioB = delayed(ev);
+                var ioB = delayed(ev, value);
                 IO.bind(ioB, follower);
                 return null;
             }));
@@ -112,21 +112,27 @@ Delay.Listened = function(listen, delayed) {
 };
 
 // Something for point-free.
+// prop :: String -> _Object -> a
 var prop = function(key) {
     return function(obj) {
         return obj[key];
     };
 };
+// compose :: (b -> c) -> (a -> b) -> a -> c
 var compose = function(g, f) {
     return function(x) {
         return g(f(x));
     };
 };
-
+// flip :: (a -> b -> c) -> b -> a -> c
 var flip = function(f) {
     return function(b) {
         return function(a) {
             return f(a)(b);
         };
     };
+};
+// constant :: a -> b -> a
+var constant = function(a) {
+    return a;
 };
