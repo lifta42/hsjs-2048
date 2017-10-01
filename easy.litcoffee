@@ -132,3 +132,56 @@ function of each method, and forget the detail of their implementation as well a
 One of the disadvantage of this style is that `realWorldOnKeyPressed` becomes uglier a bit. Pretend you cannot see it.
 Actually, everything inside `realWorld...` is ugly, is not important, and is not something we should care about.
 
+Let's start writing the reaction generator before everybody falling asleep.
+
+  reactionGeneratorWithCheckerboard = (dir, board) ->
+    collector = new ReactionCollector
+    nextBoard = manipulateCheckerboard dir, collector
+    [collector.reaction, nextBoard]
+
+This may be the most important framework of the whole script. We got a `...WithCheckerboard` method here, just like
+the `...WithRealWorld` method before. There are several states that change from calling to calling in this program.
+I divide them into three parts, and give each part a method:
+* register a listener for user action events. This changes real world.
+* make a move on the checkerboard. This changes checkerboard.
+* apply the reaction to user interface. This changes user interface (also real world).
+
+If I want to control these side effects in the strictest way, I would make all of them part of arguments and return
+values, and maybe give them a type. Right, that's why I call them project _hsjs_. The "hs" stands for haskell. Here
+is an example of how haskell handle side effect:
+
+```haskell
+getLineWithPrompt :: String -> IO String
+getLineWithPrompt prompt = do
+  putStrLn prompt
+  getLine
+```
+
+The `IO` data constructor determines that there is cost of side effect if you want to get the result. When this method
+returns, nothing happened, no side effect. Everything only takes place if you make some usage of the string inside this
+`IO` box, such as bind this value into `map length` (which has type `IO String -> IO Int`)... all right, still nothing
+happens, because the result is still in a `IO` box. Actually, because of the concept of
+[monad](https://en.wikipedia.org/wiki/Monad_(functional_programming), there's no way for a programmer to extract the
+value out of the box. The only chance is to define a method called `main`, which would has type `IO ()`. The language
+runtime will calculate the value inside the box, which will absolutely be a unit (`()`), so the only meaning to do so
+is to make the side effect you want during the calculating. And beside this, everything is pure. All you __can__ do is
+to "collect" the side effects from every corner of code, with the tools haskell provides to help you to grub several
+side effects to a bigger one, such as the do-notation above.
+
+Familiar? This is just the way I design the generator! The changes I would like to make which apply to user interface
+will be spreaded everywhere inside to logic of `manipulateCheckerboard`, and what the worse, they will not be discovered
+in the same order as they should be performed (which will be discussed below). So I will collect them with a `collector`
+object. They are froozen inside the `collector`, and are only alive when the `reaction` property is applied to the user
+interface.
+
+The last thing that needs to be noticed is that through this is a `...With...` method, it is not pure at all. the
+`collector` is a mutable variable. However, it is possible to refactor this method to a pure version, just by
+introducing some haskell tools like `<$>`, `>>=`, `<*>`... and done, I can pass an "empty reaction" into the
+manipulation method and get a full one in return. But that is hard. That is why I dropped the old `src.js` and so on.
+If you check the git history you will find out that I have tried to build a haskell world in the past time. I was not
+on the edge of failure, but it became too hard, too hard to have fun with it. Also, there is something pretty called
+[purescript](http://www.purescript.org/) exists, and I will never beat it on my own. Just remember:
+
+> Haskell-style javascript does not mean haskell in javascript syntax, but javascript with haskell spirit.
+
+Time for lunch ^_^. See you when I figure out the easiest way to go on.
