@@ -123,8 +123,9 @@ This is called [beta-reduction](https://en.wikipedia.org/wiki/Lambda_calculus#.C
 (they call it "point-free") style is better because:
 * ~~it's shorter.~~
 * what is the different between the outer `callback` and the inner one? If you trace the calling stack, you will find
-out that they are actually the same callback: the lambda we passed to `onpress` in place in
-`whenKeyPressedWithRealWorld`. The extra arguemnts do not make code cleaner, but more confusing.
+out that they are actually different things: the outer one is the lambda we passed to `onpress` in place in
+`whenKeyPressedWithRealWorld`, which accepts a char and do something with it, and the inner one is the lambda we use
+to recive the DOM event from real world. The extra arguemnts do not make code cleaner, but more confusing.
 * the defination of `whenAnyOfTheseKeysPressed` becomes a sentence now! Ignore the double "real world", you can read
 it as normal English. Just as the same of something above: I want to _describe_ this process, to illustrate the
 function of each method, and forget the detail of their implementation as well as I can do.
