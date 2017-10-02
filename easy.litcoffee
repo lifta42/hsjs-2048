@@ -137,7 +137,7 @@ Let's start writing the reaction generator before everybody falling asleep.
 
   reactionGeneratorWithCheckerboard = (dir, board) ->
     collector = new ReactionCollector
-    nextBoard = manipulateCheckerboard dir, collector
+    nextBoard = manipulateCheckerboard dir, board, collector.collect
     [collector.reaction, nextBoard]
 
 This may be the most important framework of the whole script. We got a `...WithCheckerboard` method here, just like
@@ -186,3 +186,169 @@ on the edge of failure, but it became too hard, too hard to have fun with it. Al
 > Haskell-style javascript does not mean haskell in javascript syntax, but javascript with haskell spirit.
 
 Time for lunch ^_^. See you when I figure out the easiest way to go on.
+
+------------------------------------------------------------------------------------------------------------------------
+
+All right. Today is the third day working on this easy haskell-style js 2048 project. Remind myself again. Keep it
+simple, easy, stupid the best. Try to __describe__ it as much as I can.
+
+I am not going to define the reaction generator now, because that would require a checkerboard (probably a class of it).
+I am going to _use_ that class first, and then I will know what functions I need to provide in that class. So as the
+collector, if you still remember.
+
+Update: Notice the `->` down there. This would delay the resolve of `manipulateCheckerboard`. I have to do this because
+There is no `splitCheckerboardAndMap` for now, and browser will complain if I not only _use the name_ of a method, but
+also _apply_ it. God, everybody know I won't use this method until I define the `split...` thing! Stupid JS.
+
+  manipulateCheckerboard = -> splitCheckerboardAndMap extrusionEachColumn
+
+The method `extrusionEachColumnWith` will accept a list (actually array) of numbers and "extrude" them to the front.
+This is related to the rule of 2048. Think about a situation like this:
+
+```
+8 | 8 | 4 |
+8 | 4 | 4 | 2   ^
+4 | 2 | 4 | 2   |
+4 | 2 |   |
+```
+
+If the player makes a slide toward up now, we can "split" the checkerboard into columns, and each column will not affect
+the result of others. Then we "map" a transformation to each column, bring them together and get the new checkerboard.
+This is how `splitCheckerboardAndMap` works. It splits the checkerboard in a proper way according to the direction, and
+feed the callback with every column. Finally, combine the results of the mapped callback and get
+the final result. There are several difficulties in this method:
+* it is also responsible to judge whether the action player made really changed the checkerboard. If so, then a new
+random number should be generated at a random position.
+* `extrusionEachColumn` does not know anything about the original position of the column it gets. So it needs a wrapped
+reaction collector which just require a few infomation that `extrusionEachColumn` can provide, and where is the rest
+infomation? Yeah. So it is also work of `splitCheckerboardAndMap` to construct this faked collector.
+
+Let's try the easier one first. What is the rule insife `extrusionEachColumn`? Observe the four column in above
+checkerboard. The right most one is easy: just combine two "2" and get a "4" on the top. If we write the blank space
+as a "0" then this shoud be:
+
+```
+(<-) 0 2 2 0 ==> 4 0 0 0
+```
+
+The single left arrow indicates the direction. The second column from the right has three "4" in it, and we should
+combine two of them and move the rest:
+
+```
+(<-) 4 4 4 0 ==> 8 4 0 0
+```
+
+The third column from the right looks like a combo! Should we get a "16"? No. We should stop after the combination of
+the "2"s. Just like this:
+
+```
+(<-) 8 4 2 2 ==> 8 4 4 0
+```
+
+And the last one. First we should combine the two "8"s. Then move and combine the two "4"s.
+
+```
+(<-) 8 8 4 4 ==> 16 8 0 0
+```
+
+It seems that there are millions of prossibility! Actually, there is a "general" algorithm for this problem.
+1. Start from the second position. I will quote it as "current position".
+2. Check whether the current position is not emtpy. If it is empty, then jump to step 8.
+3. Mark the left neighbour of current position as "destination".
+4. Keep move the destination left forward until we reach a position which is not empty. (Maybe this step can be ignored
+if the destination is not empty from the start.)
+5. Now we should have number both on current position and destination, or we have reach the edge during finding the
+destination. If so, them _move_ the number on current position to the edge (the first position), and goto step 8.
+6. ...Now both current position and destination should have number on them. If the number is the same, and the
+destination has not been marked as "merged", them _merge_ the number on the two positions and write it back to
+destination. The current position would be empty now. Goto step 8.
+7. Whatever the reason you reach this step, just move the destination backward. If the destination is still not the
+same position of the current one, then _move_ the current position's number to destination, which should be an empty
+place. Otherwise, just do nothing.
+8. Mark the right neighbour of current position as the new current position. Repeat until the last number's work is
+done.
+
+There are two kinds of "marking" above. The two positions are the infomation in one turn (from 1 to 8), and will be
+reset every turn; but the merged positions keeps this status till the end. Try this algorithm in above cases to prove
+its correctness, and here is the method based on it.
+
+  extrusionEachColumn = (vect, record) ->
+    len = vect.length
+    merged = (no for [0..len])
+    changed = no
+    for cur in [1...len]
+      if vect[cur] == 0 then continue
+
+      found = no  # have found the destination?
+      for dest in [cur - 1..0]
+        if vect[dest] == 0 then continue
+        found = yes
+        if vect[dest] == vect[cur] and not merged[dest]
+          record MERGE, cur, dest, vect[cur]
+          merged[dest] = yes
+          changed = yes
+          vect[dest] += vect[cur]
+          vect[cur] = 0
+        else if dest + 1 != cur
+          record MOVE, cur, dest, vect[cur]
+          changed = yes
+          vect[dest] = vect[cur]
+          vect[cur] = 0
+      if not found
+        record MOVE, cur, 0, vect[cur]
+        changed = yes
+        vect[0] = vect[cur]
+        vect[cur] = 0
+
+    [vect, changed]
+
+Wow, so long! Longer than the sum of the code I have written! There are several chances I can make it shorter and more
+"fluent", such as modify the `vect` in `record` calling, since they are both provided by parent, but that may be
+confusing.
+
+The result of this method is not only the new vector and the "side effect" it makes, but also a flag called `changed`,
+indicates whether there is changing in this column. So the tracking job left for `splitCheckerboardAndMap` is only
+calculate a logical or on each `changed`. Great!
+
+  splitCheckerboardAndMap = (mapped) ->
+    (dir, board, collect) ->  # if you forget this, scroll back and see how we used `manipulateCheckerboard`
+      size = board.size
+      range = if dir == UP or dir == LEFT then [0..size] else [size..0]
+      changed = (no for [0..size])
+      if dir == UP or dir == DOWN
+        for col in [0..size]
+          vect = board.grid[col][y] for y in range
+          record = (action, from, to, num) ->
+            collect action, [col, from], [col, to], num
+          [nextVect, changed[col]] = mapped vect, record
+          board.grid[col][y] = nextVect[y] for y in range
+      else
+        for row in [0..size]
+          vect = board.grid[x][row] for x in range
+          record = (action, from, to, num) ->
+            collect action, [from, row], [to, row], num
+          [nextVect, changed[row]] = mapped vect, record
+          board.grid[x][row] = nextVect[x] for x in range
+
+      if changed.some Boolean  # any column changed
+        board.addNumber collect  # **stop the game here maybe**
+      board
+
+  manipulateCheckerboard = manipulateCheckerboard()  # Again, stupid JS
+
+Have to say that Coffee is great at simplify and unify, just check how pretty the first and the last line of two `for`.
+This code is compressed in a naive way, because I have written this logic for many times and figure this out. You may
+want to check [the original implementation of this move method]
+(https://github.com/gabrielecirulli/2048/blob/master/js/game_manager.js#L130). I feel more confident than the first
+saw of that maybe two years ago. But still nervous since this code did not vary since I thought it out.
+
+Something to notice: the `**stop the game here maybe**` comment line. Here we add a new number to the checkerboard,
+that would make user interface change centainly. At the same time, I will check whether the game is still alive in this
+method. The word "alive" means the player can still move after the random number is added. If the game is over, then
+some more side effect will be collected, such as display "The game is OVER!", turn off the screen and make player's
+device exploit... I mean, suggest the player to share this game or something... So in a word, this method `addNumber`,
+is not that simple as adding a number and done. This can be treated as a mistake that in the previous designing I did
+not think about how this game would end too much. So that the registry of this reaction generator seems to be forever.
+Actually not. The binding will be removed after the game is over, and this job will be done here, in this `addNumber`.
+
+Okay, enough for today. See you tomorrow.
