@@ -57,7 +57,7 @@ with the value of that key.
   whenKeyPressedWithRealWorld = (onpress) ->
     (map, callback) ->
       onpress (char) ->
-        callback map[char] if char in Object.keys map
+        callback map[char] if char of Object map
 
 #  whenAnyOfTheseKeysPressed = whenKeyPressedWithRealWorld (callback) ->
 #    document.addEventListener 'keypress', (event) ->
@@ -352,3 +352,65 @@ not think about how this game would end too much. So that the registry of this r
 Actually not. The binding will be removed after the game is over, and this job will be done here, in this `addNumber`.
 
 Okay, enough for today. See you tomorrow.
+
+------------------------------------------------------------------------------------------------------------------------
+
+There is no "tuple" in javascript (coffee, either). So I have to simulate it with short array. When I call `collect`
+the second and third arguments have structure `[x, y]`. This will be the default way for passing position in this
+script.
+
+Actually, I have done this job already! No kidding, all the update-the-checkerboard logic are in the two methods above.
+There are just some more utils to write down. The most compicated one may be the collector. I have to use a class and
+some other "OOP" things because it needs local state, or I need to use an iterative method, which take a collector as
+its argument, and return the new one. We do that all the time in somewhat "functional programming". All right. No more
+talk. Now you happy the Rubist!
+
+  class ReactionCollector
+    constructor: ->
+      @after = @move = @merge = @advent = (done) -> done
+
+    reaction: ->
+      (@move @merge @advent @after ->)()
+
+Hey, writing readless thing again! Don't worry, that try it first.
+
+  (->
+    rc = new ReactionCollector
+    vec = []
+    pushAndDoneFactory = (num) ->
+      (done) ->
+        ->
+          setTimeout ->
+            vec.push num
+            done()
+          , 0
+    rc.move = pushAndDoneFactory 0
+    rc.merge = pushAndDoneFactory 1
+    rc.advent = pushAndDoneFactory 2
+    rc.reaction()
+    setTimeout ->
+      (throw new Error unless vec[i] == i) for i in [0..2]
+    , 10
+  )()
+
+This example tells us two things. First, it shows you how to use the `ReactionCollector`, and you may figure out how
+to implement `collect` if you are clever enough. Second, it reveals that I am not suitable for writing code today,
+because I cannot write anything easy now... Sorry & Goodbye.
+
+------------------------------------------------------------------------------------------------------------------------
+
+Ok. I come back to explain what I have done. Firstly, the reaction applies to user interface can to divided into three
+parts: _move_, _merge_ and _advent_. Notice that I am just talking about the checkerboard. Several other reactions such
+as update the score when a merging is happening will be inserted into the proper position of this three stages. The
+most important thing is that all the reactions that happen in the same stage will be executed __simultaneously__, and
+every reaction that happens in the next stage will not start until all the reactions in the previous stage have been
+done. Recall the things happen during your sliding on the screen (or maybe play the 2048 and observe it). Totally, there
+are following reactions:
+1. Move stage: every number block move to their destination. Some of them may be overlapping.
+2. Merge stage: the two number block on the same position will update theirs content and become a new block. The score
+will be updated, too.
+3. Advent stage: new number block will be appeared on the checkerboard.
+4. After stage: if the game is ending, them the screen will change to the game over scene.
+
+Some of these stages can be passed. Such as there's nothing happened in after stage if the game is not ended, and all
+the stages can be passed if the action player made have not changed to checkerboard.
