@@ -548,3 +548,94 @@ on a user interface... but if the `@move` things accept one more argument repres
 `(done) -> done` has to be changed to `(done) -> (ui) -> done ui`. This may be a more "functional" style, but it is not
 suitable here because it is not easy enough (and I have to modify the words above). So a little OOP things are not hurt,
 since this whole reaction collector is a class already.
+
+  parallelizeTasks = (task1, task2) ->
+    (done) ->
+      ->
+        finished1 = finished2 = false
+        executeDoneOnlyBothFinished = ->
+          done() if finished1 and finished2
+        (task1 ->
+          finished1 = true
+          executeDoneOnlyBothFinished())()
+        (task2 ->
+          finished2 = true
+          executeDoneOnlyBothFinished())()
+
+Another snippet which is not readable. It will soon become some kind of illness to write `->` symbol everywhere I can.
+The two arguments this util accepts are both "task" which has shape like `done -> ()`. It combines two of them and
+returns a bigger `done -> ()` thing. Look! A combinator! The new "task" will perform the side effects and staff that
+either of the original tasks makes __at the same time__, and only start the `done` work when the slower one of the two
+tasks finished.
+
+Wait, wait, wait... The guys come from C++/Python are angry! "This is totally buggy and ... bullshit! How dare you just
+manipulate `finished1` and `finished2` in this bare metal way! I can list hundreds of possibles of different side effect
+this code will make!" It seems the most favourite thing of the authors which write tutorial about multi-process/thread
+programming in common language is that scare the freshmen with, emm let's say, a bank account! "Hey, 50 dollar more than
+expect! Hey, 50 dollar less now!"
+
+But just _remember_, that day, that times, __end__, here. Is javascript the god? Not at all. It just do not provide any
+multi-things! (Not right for server side, node.js situation.) I said the two tasks are executed _at the same time_, but
+it is wrong. They are actually executed in sequence. This is decided by the model of javascript, single-thread model.
+Let's say you have following code:
+
+```javascript
+setTimeout(function() {
+  console.log('I am here!');
+}, 1000);
+
+// Something that will absulotely not finish in 1 sec.
+for (var i = 0; i < 1e42; i++) {
+  console.log('Tons of crowd.');
+}
+```
+
+Using javascript to clear that this feature has nothing to do with coffee. So what will happen? Will "I am here" be
+missing in the crowd of lines? No! I set it to start its work after 1 second, that does not promise that this work
+will be executed after _exactly_ 1 second, just promise that it will not start _in_ 1 second. What javascript runtime
+does is that insert the lambda I passed to `setTimeout` into a job queue, and the runtime will only pop the first
+job from that queue when the current job is finished. Since it can only handle one job at one time, the timeout job
+has to wait for the current job to finish. Therefore, you will never miss "I am here", because it will always appear
+at the end of all of the output.
+
+The explaination above proves that neither the "lock" staff nor the "atom" staff is useful in javascript. I don't know
+the order of the executing of the two lambda passed into two tasks, but some crazy thing like first check the two flags
+in `if finished1 and finished2` and then set either of them in either of the callbacks will never happen. I mean, never
+ever ever getting... happen. Right.
+
+So let's do something more funny with this util:
+
+  (->
+    rc = new ReactionCollector
+    vec = []
+    taskFactory = (num) ->
+      (done) ->
+        ->
+          setTimeout ->
+            vec.push num
+            done()
+          , 0
+    task0 = taskFactory 0
+    task1 = taskFactory 1
+    task2 = taskFactory 2
+    task01 = parallelizeTasks task0, task1
+    rc.move = task01
+    rc.merge = task2
+    rc.reaction()
+    setTimeout ->
+      throw new Error unless (vec[0] == 0 and vec[1] == 1 and vec[2] == 2) or
+        (vec[0] == 1 and vec[1] == 0 and vec[2] == 2)
+    , 10
+  )()
+
+I think it is enough to let you figure what happened above according to the test snippet previously. You may notice that
+I use postfix `Factory` more and more. This is a concept borrowed from design pattern of OOP. The simple factory pattern
+products (returns) object in a custom shape, and in my code, the products are method. Actually, this is a two-layer
+factory: first a `num`, and then a `done`, and we got our product method finally. Ah, missing that beautiful time
+playing with haskell, where you can just write `(num, done) -> #...` and the compiler will handle all the currying and
+stuff business for you. Why the hell there would be methods that do not accept argument? Wouldn't that a simple value
+that needs to do delayed-evaluated? Laziness is the default behaviour of haskell, which means everything, every int var
+in your code would be a non-argument method, and will need be called when you _really_ need to know it is exactly is. I
+mean, really, that being refered by other methods is not enough. The whole thing will only take place unless you type
+the variable's name in repl to ask for its value, or the IO action which become the main process to be extracted. It is
+hard to reject that, haskell is really something that every programmer should learn about, even a little.
