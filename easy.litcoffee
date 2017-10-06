@@ -4,12 +4,35 @@ plain old javascript (or coffeescript).
 I choose coffee because I can write many, many trivial words in this literal mode, so that I will feel this file
 valuable and will be not willing to delete it, as what I did to something like `src.js`, `lib.js` and `test.js`. RIP.
 
+> "Coffee? Must be something evil! Goodbye!"
+> In case of some of you think like this, here is some preparing steps if you are not familiar with this language full
+> of sugar:
+> * Level 0, you are lazy: just keep reading.
+> * Level 1, you don't know about coffeescript: visit [coffee's homepage](http://coffeescript.org/) for some infomation.
+> * Level 2, you don't know about ES2015: visit [babel's tutorial](https://babeljs.io/learn-es2015/).
+> * Level 3, you don't know about javascript: visit [w3school's tutorial](https://www.w3schools.com/js/) or any other
+> website if you cannot visit it.
+> * Level 4, you don't know about programming: ...then how did you find this project all the way along?
+>
+> You may notice that I order these levels in a more-to-less knowledged way. Because the previous level does not require
+> all the things in the following ones. You may start from level 1 even you know little about ES2015, and only move 
+> forward if you really cannot understand what you are looking at.
+>
+> Actually, there is nothing more for you to learn if you know Ruby or C++ or even neither of them. Just remember two
+> things before reading:
+> 1. `->` introduces a method. A simple, non-trivial example would be `addOne = (n) -> n + 1`.
+> 2. There will be no parenthesis unless it is needed. `foo bar, 42` means `foo(bar, 42)`, and `foo bar 42` means
+> `foo(bar(42))`.
+>
+> I leave this project at every horizontal split. You are recommended to do so, think about why the hell you keep
+> reading (for me writing), and come back just like me.
+
 For my first step, I want to make a simple 2048 web-page based game. It should listen to user's keyboard (or screen if
 the user visits with a moblie device), make some reaction when user make actions. In the future, an AI may be
 introduced (forget it), and the reaction maybe respond to actions made not by user, by the AI which would be another
 part of script. So, pre anything, I need to register a listener, so that I will be able to make my reaction.
 
-  main = ->
+  mainLoop = ->
     responseWith(reactionGenerator).applyTo userInterface
 
 This is a two-step process. Firstly, the register is generated. Notice that I passed a generator into the register
@@ -25,8 +48,7 @@ good idea to understand this process as a registry, just regaurd it as a descrip
 top-most view.
 
   responseWith = (gen) ->
-    keys = {w: UP, a: LEFT, s: DOWN, d: RIGHT}
-
+    keys = w: UP, a: LEFT, s: DOWN, d: RIGHT
     applyTo: (ui) ->
       whenAnyOfTheseKeysPressed keys, (direction) ->
         reaction = gen direction
@@ -49,6 +71,8 @@ user's action, it calculated how this action would affect checkerboard's situati
 the "checkerboard" on the screen. The changing may be splited into several animations, some dirty black-magical DOM
 things. All of these will be packed inside one method and be returned, which happened to be `reaction`.
 
+------------------------------------------------------------------------------------------------------------------------
+
 Good morning! Just slept for a whole night and continue gushing. It seems that it is clear enough to write a generator
 after the explain above, but I'm going to start from a easier work: the utility method `whenAnyOfTheseKeysPressed`. It
 accept a dict, and whenever user presses any key that is a key in this dict, the callback argument will be executed
@@ -59,9 +83,9 @@ with the value of that key.
       onpress (char) ->
         callback map[char] if char of Object map
 
-#  whenAnyOfTheseKeysPressed = whenKeyPressedWithRealWorld (callback) ->
-#    document.addEventListener 'keypress', (event) ->
-#      callback event.key
+  #whenAnyOfTheseKeysPressed = whenKeyPressedWithRealWorld (callback) ->
+  #  document.addEventListener 'keypress', (event) ->
+  #    callback event.key
 
   realWorldOnKeyPressed =
     withConvert: (convert) ->
@@ -369,10 +393,10 @@ talk. Now you happy the Rubist!
     constructor: ->
       @after = @move = @merge = @advent = (done) -> done
 
-    reaction: ->
+    reaction: (@ui) ->
       (@move @merge @advent @after ->)()
 
-Hey, writing readless thing again! Don't worry, that try it first.
+Hey, writing readless thing again! Don't worry, let's try it first.
 
   (->
     rc = new ReactionCollector
@@ -387,6 +411,7 @@ Hey, writing readless thing again! Don't worry, that try it first.
     rc.move = pushAndDoneFactory 0
     rc.merge = pushAndDoneFactory 1
     rc.advent = pushAndDoneFactory 2
+    # I forgot the `@after` in the first time, so there's no `after` line here.
     rc.reaction()
     setTimeout ->
       (throw new Error unless vec[i] == i) for i in [0..2]
@@ -511,7 +536,15 @@ partFac = (n, self) -> if n == 1 then 1 else n * self(n - 1)
 fac = Y partFac
 ```
 
-And here the method called `fac` will be a real factorial method! `fac(3)` is return `6`! As a simple example, the
-method `move1` aka `id` is a combinator, but the method `move2` is not sure, it depends on how you fill the "do
-something" part. Ok, ok, too much talk again. It is not suitable to work at... umm, 4 a.m. now, because you would make
-too many mistakes and it will become an action of wasting time 100% possible. So see you tomorrow.
+And here the method called `fac` will be a real factorial method! `fac(3)` returns `6`! As a simple example, the method
+`move1` aka `id` is a combinator, but the method `move2` is not sure, it depends on how you fill the "do something"
+part. Ok, ok, too much talk again. It is not suitable to work at... umm, 4 a.m. now, because you would make too many
+mistakes and it will become an action of wasting time 100% possible. So see you tomorrow.
+
+------------------------------------------------------------------------------------------------------------------------
+
+I have not memtioned that `@ui` argument for even once. Why? I just add it! I forgot that the reaction will be applied
+on a user interface... but if the `@move` things accept one more argument represents user interface then the simple
+`(done) -> done` has to be changed to `(done) -> (ui) -> done ui`. This may be a more "functional" style, but it is not
+suitable here because it is not easy enough (and I have to modify the words above). So a little OOP things are not hurt,
+since this whole reaction collector is a class already.
