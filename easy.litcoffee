@@ -414,3 +414,104 @@ will be updated, too.
 
 Some of these stages can be passed. Such as there's nothing happened in after stage if the game is not ended, and all
 the stages can be passed if the action player made have not changed to checkerboard.
+
+------------------------------------------------------------------------------------------------------------------------
+
+Cannot sleep today, so I come back at 3 a.m. Compare the two `move` I have defined above:
+
+```coffeescript
+# done :: () -> ()
+move1 = (done) -> done  # id
+move2 = (done) ->
+  ->
+    # do something and...
+    done()
+    # something more...
+```
+
+The second one is a part of `pushAndDoneFactory`, try to pass a number into it and find out what it would return. First,
+change the first version into the following equivalent form:
+
+```coffeescript
+move1 = (done) ->
+  ->
+    done()
+```
+
+They are not actually the same, I know it. But if the only thing you would perform on `move1` is to call it (I cannot
+think out some more things you are able to do), then there will be no differece between this two forms. Just treat it as
+a special kind of point-free style (actually "currying" is a more proper way to introduce it). Now the `move1` and the
+`move2` are in the same shape: if we use `()` to represent something like `void` in C/C++, and `() -> ()` will mean some
+kind of method that accepts no argument and return nothing, just executes and becomes dead. Then, this two `move` can
+be treated as a method that accept a `() -> ()` kind method as its argument and return another `() -> ()` as the result.
+Only difference between them is that `move1` does not modify its argument: it returns the very same method that pass to
+it. We usually give the name `id` (stands for "identity") for this method... yeah, in haskell. The method `move2` would
+accept a simple `() -> ()` method and return a more complicated method. And during the executing of that complicated
+method, the simple one would be executed somewhere properly. This way of writing code is usually called "lambda
+calculus", which means there are a lot of lambda in the code, and (almost) all of the variables represent something
+acts like a method, but not a normal number or string or something else. The "method" is not the same concept like
+"procedure" or "function" in other languages, which mean something big and heavy, maybe relates to stack more some other
+crazyness. No at all. A method just means the code inside of it will be _delayed_, the result of them, along with the
+side effects they make, will be stored, and only be extracted when you really need them in the future, just like the
+result of `move2`. Browser finds out that `move2` returns a lambda, and done. It prevents any futher interpreting that
+performs on the result of `move2`. And if you apply that result as the argument to another calling on `move2`, or maybe,
+`move42`, then its evaluating will be delayed again, as it becomes a deeper layer of the onion. OMG how I wrote so much
+junk... forget it.
+
+Look inside the defination of `reaction`, the part `@after ->` firstly. The arrow `->` here is a method actually (crazy
+coffee, unh?), which accept no argument, do nothing, and return nothing. Passing this trivial method as `done` into
+`@after`, which is the same as the `move1` above, you know what is happening now. The whole thing become a new 
+`() -> ()` method! Let's move backward. This `() -> ()` is passed to `@advent` as its `() -> ()` argument. What will
+happen? A new, bigger `() -> ()` is the result of this expression. Notice that this bigger method can be not trivial,
+since we may define `@advent` similiarly to `move2`. The process repeats for a couple of times, and finally, I surround
+the whold expression with a pair of parenthesis and boom! Execute it! According to `move2`, the "do something" part in
+`@move` would be the very first part of code to be executed, and then its `done` is called, which would be exactly
+the `@merge` property. Since there is actually no `something more` part in all of these four property, so actually it
+means:
+
+> First do the moving things, and then merging, adventing, and finally everything after them.
+
+Look at this line of code again:
+
+```coffeescript
+(@move @merge @advent @after ->)()
+```
+
+Not as bad as we thought! I know that it would be "easier" if I write some utils and refactor it like:
+
+```coffeescript
+firstDo(@move).andThen(@merge).andThen(@advent).andFinally(@after).andDoIt()
+```
+
+But all of this frameword would be wasted if I will not use it again. And another reason is that this sequential model
+is very useful so it has been implemented many times, for example the everybody-like `Promise`. And the real reason is
+that I am lazy. Shame on myself.
+
+And actually the four-verbs version is very descriptive already, right? (Say yes, please. I'm begging you.) The only
+work that left for us about this collector class is that define that `collect` method, which accept some infomation,
+and then turn one of this four `() -> ()` methods into another bigger `() -> ()` method and replace the old one. By the
+way, the methods work like `move2` and `collect`, that accept a method and some infomation optionally, and return a new
+method, are called high order methods, and more strictly, "combinators" if they do not require any information outside.
+For example, suppose we have something like this:
+
+```coffeescript
+plusFactory = (addition) ->
+  (func) ->
+    (arg) ->
+      func(arg) + addition
+```
+
+Then `plusFactory(42)` is not a combinator, because how it manipulates the execution of `func` depends on the value of
+`addition`, which is `42` exactly. One of the most famous example of combinator would be the Y-combinator, which is able
+to "construct" a recursive method without any recursive calling. Suppose you have a Y and a method like this:
+
+```coffeescript
+Y = # ... something crazy, ignore it
+partFac = (n, self) -> if n == 1 then 1 else n * self(n - 1)
+fac = Y partFac
+```
+
+And here the method called `fac` will be a real factorial method! `fac(3)` is return `6`! As a simple example, the
+method `move1` aka `id` is a combinator, but the method `move2` is not sure, it depends on how you fill the "do
+something" part. Ok, ok, too much talk again. It is not suitable to work at... umm, 4 a.m. now, because you would make
+too many mistakes and it will become an action of wasting time 100% possible. So see you tomorrow.
