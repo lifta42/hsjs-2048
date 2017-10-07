@@ -298,7 +298,7 @@ its correctness, and here is the method based on it.
 
   extrusionEachColumn = (vect, record) ->
     len = vect.length
-    merged = (no for [0..len])
+    merged = (no for [0...len])
     changed = no
     for cur in [1...len]
       if vect[cur] == 0 then continue
@@ -340,17 +340,17 @@ calculate a logical or on each `changed`. Great!
       range = if dir == UP or dir == LEFT then [0..size] else [size..0]
       changed = (no for [0..size])
       if dir == UP or dir == DOWN
-        for col in [0..size]
+        for col in [0...size]
           vect = board.grid[col][y] for y in range
           record = (action, from, to, num) ->
-            collect action, [col, from], [col, to], num
+            (collect action) [col, from], [col, to], num
           [nextVect, changed[col]] = mapped vect, record
           board.grid[col][y] = nextVect[y] for y in range
       else
-        for row in [0..size]
+        for row in [0...size]
           vect = board.grid[x][row] for x in range
           record = (action, from, to, num) ->
-            collect action, [from, row], [to, row], num
+            (collect action) [from, row], [to, row], num
           [nextVect, changed[row]] = mapped vect, record
           board.grid[x][row] = nextVect[x] for x in range
 
@@ -375,7 +375,8 @@ is not that simple as adding a number and done. This can be treated as a mistake
 not think about how this game would end too much. So that the registry of this reaction generator seems to be forever.
 Actually not. The binding will be removed after the game is over, and this job will be done here, in this `addNumber`.
 
-Okay, enough for today. See you tomorrow.
+Okay, enough for today. See you tomorrow. (One more word from the future: the strange `(collect SOMETHING) OTHERS` thing
+will be explained ... far away below here.)
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -639,3 +640,76 @@ in your code would be a non-argument method, and will need be called when you _r
 mean, really, that being refered by other methods is not enough. The whole thing will only take place unless you type
 the variable's name in repl to ask for its value, or the IO action which become the main process to be extracted. It is
 hard to reject that, haskell is really something that every programmer should learn about, even a little.
+
+------------------------------------------------------------------------------------------------------------------------
+
+Is it time to write `ReactionColloector#collect` method? In my opinion, we should write everything after we _used_ 
+everything. There's one more usage of this method in `Checkerboard#addNumber`, and `Checkerboard` class is of which
+the `board` above an instance. Therefore, let's write this class first. How did we use it? A `grid` property, stores
+a map of the checkerboard, and a `addNumber` method. Actually, there's one more function provided by this class, which
+is to judge whether the game is able to continue. Let's start.
+
+  class Checkerboard
+    constructor: (@size) ->
+      @grid = ((0 for [0...size]) for [0...size])
+
+    addNumber: (collect) ->
+      [x, y] = @chooseBlank()
+      num = if randomRange(10) == 0 then 4 else 2
+      (collect ADVENT) [x, y], num
+      (collect END)() if @gameOver()
+
+    chooseBlank: ->
+      loop
+        [x, y] = [randomRange(@size), randomRange(@size)]
+        return [x, y] if @grid[x][y] == 0
+
+    gameOver: ->
+      for x in [0...@size]
+        for y in [0...@size]
+          return false if @grid[x][y] == 0 or
+            (x > 0 and @grid[x - 1][y] == @grid[x][y]) or
+            (y > 0 and @grid[x][y - 1] == @grid[x][y]) or
+            (x < n - 1 and @grid[x + 1][y] == @grid[x][y]) or
+            (y < n - 1 and @grid[x][y + 1] == @grid[x][y])
+      true
+
+There are two more usages of `collect` here, but they look much different from how we used it when we collected `MOVE`
+and `MERGE` actions. So I am cosidering provide several different `collect`. By how? Umm.. you must have known it now.
+But for me, I just changed the code 300+ lines above! The `collect` accepts an action first, and returns a proper
+method to handle the rest arguments. Ah, how clever.
+
+  ReactionCollector::collect = (action) ->
+    switch action
+      when MOVE then (from, to, num) ->
+        @move = parallelizeTasks @move, (done) -> -> @ui.move from, to, num, done
+      when MERGE then (from, to, num) ->
+        @merge = parallelizeTasks @merge, (done) -> -> @ui.merge from, to, num, done
+      when ADVENT then (pos, num) ->
+        @advent = parallelizeTasks @advent, (done) -> -> @ui.advent pos, num, done
+      when END then ->
+        @after = parallelizeTasks @after, (done) -> -> @ui.end done
+
+How silly this is! Why I have to write the same code four times! I cannot stand it! Let me try again.
+
+  ReactionCollector::collect = (action) ->
+    map = MOVE: [@move, @ui.move], MERGE: [@merge, @ui.merge], ADVENT: [@advent, @ui.advent], END: [@after, @ui.end]
+    (args...) -> map[action][0] = parallelizeTasks map[action][0], (done) -> -> map[action][1] args..., done
+
+Welcome to my new way of explaining unreadable code! Coffee does not forbid me to re-define a method, right? Actually
+it turns out that I had worried for nothing, all the differet ways of calling `collect` have been passed to the user
+interface's methods. Thanks to coffeescript I can write a var-arg method in such a simple way.
+
+Any more questions? Don't know what `(done) -> -> #...` is? Check the same structure in the defination of
+`parallelizeTasks` or further more above. Actually I have used this pattern for many times. People give name to such
+thing in either C++ or Haskell, and call that name its _type_. It makes me feel heavy to introduces the concept of
+type (kind? Never have that thought!), so I will just use the word "task" in the comments to refer it.
+
+"Are you a javascript programmer or not! What a simple mistake!" Oh, oh, I know what you have found out. I planned to
+do that in the end of this file, but it does not hurt to finished it earlier.
+
+  [MOVE, MERGE, ADVENT, END] = ["MOVE", "MERGE", "ADVENT", "END"]
+  # Something more.
+  [UP, RIGHT, BOTTOM, LEFT] = ["UP", "RIGHT", "BOTTOM", "LEFT"]
+
+Happy? ^_^
