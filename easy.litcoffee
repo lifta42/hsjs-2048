@@ -159,10 +159,13 @@ Actually, everything inside `realWorld...` is ugly, is not important, and is not
 
 Let's start writing the reaction generator before everybody falling asleep.
 
-  reactionGeneratorWithCheckerboard = (dir, board) ->
+  reactionGeneratorWithCheckerboard = (board) -> (dir) ->
     collector = new ReactionCollector
     nextBoard = manipulateCheckerboard dir, board, collector.collect
     [collector.reaction, nextBoard]
+
+P.S. from the future: read to the seventh hundred of lines of this script, I will explain the strange two-step argument
+passing style... No I will not explain, you will figure it out by yourself.
 
 This may be the most important framework of the whole script. We got a `...WithCheckerboard` method here, just like
 the `...WithRealWorld` method before. There are several states that change from calling to calling in this program.
@@ -392,10 +395,10 @@ talk. Now you happy the Rubist!
 
   class ReactionCollector
     constructor: ->
-      @after = @move = @merge = @advent = (done) -> done
+      @after = @move = @update = @advent = (done) -> done
 
     reaction: (@ui) ->
-      (@move @merge @advent @after ->)()
+      (@move @update @advent @after ->)()
 
 Hey, writing readless thing again! Don't worry, let's try it first.
 
@@ -410,7 +413,7 @@ Hey, writing readless thing again! Don't worry, let's try it first.
             done()
           , 0
     rc.move = pushAndDoneFactory 0
-    rc.merge = pushAndDoneFactory 1
+    rc.update = pushAndDoneFactory 1
     rc.advent = pushAndDoneFactory 2
     # I forgot the `@after` in the first time, so there's no `after` line here.
     rc.reaction()
@@ -433,7 +436,7 @@ every reaction that happens in the next stage will not start until all the react
 done. Recall the things happen during your sliding on the screen (or maybe play the 2048 and observe it). Totally, there
 are following reactions:
 1. Move stage: every number block move to their destination. Some of them may be overlapping.
-2. Merge stage: the two number block on the same position will update theirs content and become a new block. The score
+2. Update stage: the two number block on the same position will update theirs content and become a new block. The score
 will be updated, too.
 3. Advent stage: new number block will be appeared on the checkerboard.
 4. After stage: if the game is ending, them the screen will change to the game over scene.
@@ -500,7 +503,7 @@ means:
 Look at this line of code again:
 
 ```coffeescript
-(@move @merge @advent @after ->)()
+(@move @update @advent @after ->)()
 ```
 
 Not as bad as we thought! I know that it would be "easier" if I write some utils and refactor it like:
@@ -621,7 +624,7 @@ So let's do something more funny with this util:
     task2 = taskFactory 2
     task01 = parallelizeTasks task0, task1
     rc.move = task01
-    rc.merge = task2
+    rc.update = task2
     rc.reaction()
     setTimeout ->
       throw new Error unless (vec[0] == 0 and vec[1] == 1 and vec[2] == 2) or
@@ -651,7 +654,7 @@ is to judge whether the game is able to continue. Let's start.
 
   class Checkerboard
     constructor: (@size) ->
-      @grid = ((0 for [0...size]) for [0...size])
+      @grid = ((0 for [0...@size]) for [0...@size])
 
     addNumber: (collect) ->
       [x, y] = @chooseBlank()
@@ -684,7 +687,8 @@ method to handle the rest arguments. Ah, how clever.
       when MOVE then (from, to, num) ->
         @move = parallelizeTasks @move, (done) -> -> @ui.move from, to, num, done
       when MERGE then (from, to, num) ->
-        @merge = parallelizeTasks @merge, (done) -> -> @ui.merge from, to, num, done
+        @move = parallelizeTasks @move, (done) -> -> @ui.move from, to, num, done
+        @update = parallelizeTasks @update, (done) -> -> @ui.update to, num, done
       when ADVENT then (pos, num) ->
         @advent = parallelizeTasks @advent, (done) -> -> @ui.advent pos, num, done
       when END then ->
@@ -693,8 +697,10 @@ method to handle the rest arguments. Ah, how clever.
 How silly this is! Why I have to write the same code four times! I cannot stand it! Let me try again.
 
   ReactionCollector::collect = (action) ->
-    map = MOVE: [@move, @ui.move], MERGE: [@merge, @ui.merge], ADVENT: [@advent, @ui.advent], END: [@after, @ui.end]
-    (args...) -> map[action][0] = parallelizeTasks map[action][0], (done) -> -> map[action][1] args..., done
+    map = MOVE: [@move, @ui.move], MERGE: [@move, @ui.move], ADVENT: [@advent, @ui.advent], END: [@after, @ui.end]
+    (args...) ->
+      map[action][0] = parallelizeTasks map[action][0], (done) -> -> map[action][1] args..., done
+      (@update = parallelizeTasks @update, (done) -> -> @ui.update args[1], args[2], done) if action == MERGE
 
 Welcome to my new way of explaining unreadable code! Coffee does not forbid me to re-define a method, right? Actually
 it turns out that I had worried for nothing, all the differet ways of calling `collect` have been passed to the user
@@ -713,3 +719,160 @@ do that in the end of this file, but it does not hurt to finished it earlier.
   [UP, RIGHT, BOTTOM, LEFT] = ["UP", "RIGHT", "BOTTOM", "LEFT"]
 
 Happy? ^_^
+
+P.S. I did not memtion anything about the magic inside the `MERGE` branch, because... I made a mistake in the first time
+and corrected it now. The three basic actions of checkerboard are move, _merge_ and advent. But for collector, they are
+move, _update_ and advent. The merge action is actually a combination of "move a number to the merged position" and
+"update the number of the merged position by doubling it", and this two actions should take place in different stages.
+It becomes ugly since I cannot make the `MERGE` branch a special case of others. Fix it someday (~~no day~~).
+
+------------------------------------------------------------------------------------------------------------------------
+
+As a believer of TDD, I feel bad till today. There is no test except the most simple ones on tasks. Spoil alert. After
+this `easy` script, there will be two more: `hard` and `test`. Along with index page (stylesheet maybe?), these are the
+only files of this project. I wanna show you that testcases are essential even for a toy.
+
+Today is the nineth day of this project. Let's start from something easy:
+
+  randomRange = (n) ->
+    Math.floor(Math.random() * n)
+
+It is a bad idea to take more than ten days to finish a "easy" thing. Today I will introduce the last important concept
+called `Tile`. But before that, we finally could write the generator itself... hope you have not forgotten that we are
+still not touch that!
+
+  initializeReactionGenerator = (feedReactionCollector) -> reactionGeneratorWithCheckerboard do ->
+    checkerboard = new Checkerboard config.game.size
+    collector = new ReactionCollector
+    checkerboard.addNumber collector.collect
+    checkerboard.addNumber collector.collect
+    feedReactionCollector collector
+    checkerboard
+
+Firstly, hope you understand why there are two layer of arguments in `...WithCheckerboard` now. For you that may be
+something you nearly forget, but for me the modification just happened for seconds ago. And second, what is `config`?
+This is another thing that not recommends in haskell: global state for configure. Actually I accept this design because
+I will never change the content of `config` in the whole program, so this hardly calls a dependence. There will be many
+configure items if you continue reading, but most of them are related to user interface, such as the size of the number
+blocks on the screen, the speed of the animations, etc. I will introduced the whole `config` dict just before the
+implementation of user interface, so for now... stupid javascript again. What the hell is the benefit of strict
+evaluation!
+
+Compare this invocation of `...WithCheckerboard` with the `...WithRealWorld` case, you may find out we have a explicit
+global mutable variable (the `new Checkerboard ...` thing) here. Not a real global variable, but it is global for the
+inner lambda. This is a equal thing in the real world. But that global state has already been provided by browser, and
+by the way a series of API to manipulate it (`addEventListener` etc.), so I need not to define it by myself.
+
+If you still remember (and I have said this thing before indeed), I memtioned that the two states in checkerboard and
+user interface are not the same. For example, we can index a number by its position (coordination) in checkerboard, but
+we cannot do so in user interface. How to index a tile that in a middle of a moving from one position to another? This
+is not a problem for checkerboard, because in the checkerboard, the number blocks move and merge in no time. But there
+are long and still animation in the user interface. "We can _pretend_ that the numbers update immediately! We can always
+refer it by the newest position of it!" That's right, and that is also what I will do to provide a proper interface to
+the checkerboard (actually the interface is fixed now, I mean implement it). But what is important is that we should
+_change our view_ with a __middle layer__. In the checkerboard, first we have a number of grids, then there may be some
+numbers on them. However, in the user interface, first we have a number of "numbers", then each of them holds a position
+which changes from time to time. This "number" and "position" combination is called a __tile__. This noun is borrowed
+from the original 2048 implementation, but I have no idea what it means in that version.
+
+There is another reason to introduce tile, that a tile is a `<div>` in the web page. Let's start with a convertor.
+
+  class TileContainer
+    constructor: (@createT, @destroyT, @moveT, @updateT) ->
+      @tiles = {}
+      @trash = {}
+
+Let me explain it. This is what I called "middle layer" before. This class will provide the interfaces about tiles that
+reaction collector asks for, and itself asks for user interface three methods, too. What does this four methods do? You
+will know it by observing how I use them.
+
+  TileContainer::move = (from, to, num, done) ->
+    @moveT @tiles[from], to, done
+    @trash[to] = @tiles[to] if @tiles[to]?  # useful below
+    @tiles[to] = @tiles[from]
+    delete @tiles[from]
+
+The most simple one. The keys of `@tiles` is the two-length list of position. But what is its values?
+
+  TileContainer::advent = (pos, num, done) ->
+    @createT pos, num, done, (tile) -> @tiles[pos] = tile
+
+Ah, intreseting! For the first time we care about callback's "result" (explain below). Then there is no big deal about
+the exactly "type" of `@tiles` values. I just gain some value from user interface and then give them back.
+
+  TileContainer::update = (pos, num, done) ->
+    action = (dn) -> -> @updateT @tiles[pos], num, dn
+    (action = parallelizeTasks action, (dn) -> -> @destoryT @trash[pos], dn) if @trash[pos]?
+    action(done)()
+
+Familiar? I have not thought about using this util again, either! The difference is that this time we apply it in place,
+but not combine and combine and make it part of a chain. Is it okay to write like this? I'm not sure, either. Just see
+whether these words will be deleted or not.
+
+Let's analize this method and `move` above together. What _should_ happen when you want to merge two numbers, and what
+is the different between this and just move them, no merge? Consider a general case:
+
+```
+(<-) 0 2 2 0 ==> 4 0 0 0
+(<-) 0 4 2 0 ==> 4 2 0 0
+```
+
+I am not good at illustration, but one thing must be correct, that we have to identify _merge_ in this lower layer even
+there is no _merge_ here! And this is how I made it:
+1. In the move stage, if two numbers are moved to the same position, then a merge _will_ happen. We _will_ delete one of
+the two numbers, but we cannot do it now, because that should be something happens after every moving action. So store
+the "will be deleted" tile in the `@trash` list, and wait.
+2. In the update stage (the correct time to delete the duplicated tiles), it is true that for all tiles that need to be
+deleted, there must be a tile that needs to be updated in the same position. So check the `@trash` by the way and find
+out all the tiles to be deleted, and delete them as the same time as the updating.
+
+What I did above is actually the third reason of the existance of this middle layer. I did not write about it because
+~~I forgot~~ it is too hard to explain this problem unless we meet it. The hardest time of me during working on
+"easy-2048" (the ancetor of this project) was that meet this problem after about four hundreds lines of code (not like
+this eight hundred... there is almost no comment in that script). In the end the workaround broke the rule I made and
+made me unwilling to keep finishing that project. The concept is the same this time, only I know this problem and
+give it a place. Would the past I be happy if he sees this?
+
+And now, the final part of this script. I will provide a trivial user interface here, which can only log what it should
+do. Drawing a web page and more would be a "hard" thing. I say it's "hard", but my meaning is "boring". All the code
+here should be easy to understand, and be easy to fall in love with.
+
+  class TrivialUserInterface
+    constructor: ->
+      @tileCount = 0
+      @container = new TileContainer @createT, @destroyT, @moveT, @updateT
+
+    move: (from, to, num, done) ->
+      @container.move from, to, num, done
+
+    update: (pos, num, done) ->
+      @container.update pos, num, done
+
+    advent: (pos, num, done) ->
+      @container.advent pos, num, done
+
+    createT: (pos, num, done, feed) ->
+      console.log "Create tile #{@tileCount} at #{pos}."
+      feed @tileCount
+      @tileCount++
+      done()
+
+    destroyT: (tile, done) ->
+      console.log "Destroy tile #{tile}."
+      done()
+
+    moveT: (tile, pos, done) ->
+      console.log "Move tile #{tile} to #{pos}."
+      done()
+
+    updateT: (tile, num, done) ->
+      console.log "Update tile #{tile} to #{num}."
+      done()
+
+
+  userInterface = new TrivialUserInterface  # re-define in hard
+  config = {game: {size: 4}}  # re-define in hard
+  
+  mainLoop =
+    responseWith(initializeReactionGenerator((collector) -> collector.reaction(userInterface))).applyTo userInterface
+  mainLoop()
